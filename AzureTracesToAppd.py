@@ -4,17 +4,27 @@
 # Analytics Event. Uses the API documented here:
 # https://docs.appdynamics.com/display/PRO42/Analytics+Events+API
 #
-# 3. Extract the data from Azure Serverless Functions
-# 4. Insert the payload from that extraction into AppDynamics
-#    - assumes you have a controller with an Event cluster (see docs)
+
 import requests
 import json
 import sys
-# ---------------------------------------------------------------------------
+import datetime
 
+# ---------------------------------------------------------------------------
+# KEYS FOR ACCESSING BOTH AZURE AND APPDYNAMICS
+#
+
+azureApplicationID = "06e7e052-76e6-467a-9e1d-44bdfcdb71ad"
+azureAPIKey = "2ld7ms8jngjh76qpim0n7uiri0dxfl6feeghqcsq"
+appDCustomerName = "ecovapov_ce1cd01a-111a-4532-a775-a4ff9a247975"
+appDAPIKey = "98dd218f-a1f5-4feb-bcc2-e61dbaddbcc2"
+
+# ---------------------------------------------------------------------------
+# FUNCTIONS:
+#
 def flatten_json(y):
     out = {}
-    
+
     def flatten(x, name=''):
         if type(x) is dict:
             for a in x:
@@ -29,16 +39,14 @@ def flatten_json(y):
 
     flatten(y)
     return out
-
-# Keys
-azureApplicationID =
-azureAPIKey =
-appDCustomerName =
-appDAPIKey =
+#
+# Add a function for time differential
+#def time_differential(x,y)
+#    out = {}
+#
 
 # ---------------------------------------------------------------------------
 # PART 1: EXTRACT THE TRACES FROM AZURE SERVERLESS FUNCTIONS
-#
 # THIS QUERY EXTRACTS THE TRACES FOR THE LAST 1 HOUR
 #
 url = 'https://api.applicationinsights.io/beta/apps/' + azureApplicationID + '/events/traces'
@@ -47,10 +55,12 @@ payload = {'timespan': 'PT1H'}
 print "Accessing Azure..."
 aztraces = requests.get(url, params=payload, headers=headers).json()
 print "The Azure traces payload in JSON format:"
-print aztraces
+#print aztraces
 print
 
+# ---------------------------------------------------------------------------
 # PART 2: FLATTEN TO 1 LEVEL OF KEY VALUES AND GET KEYS
+#
 outtraces = []
 key_types = dict()
 for trace in aztraces['value']:
@@ -62,7 +72,9 @@ for trace in aztraces['value']:
         key = key.replace('{', '')
         key = key.replace('}', '')
         flat_trace[key] = value
-        # Create Key Set
+
+
+        # Change key type
         if not key_types.has_key(key):
             key_type = type(flat_trace[key])
             appd_key_type = ''
@@ -75,22 +87,95 @@ for trace in aztraces['value']:
             elif key_type == type(1):
                 appd_key_type = 'integer'
             else:
-                print 'Unhanled type for'
+                print 'Unhandled type for'
                 print key
                 print key_type
             key_types[key] = appd_key_type
 
+        # Remove unimportant keys
+        if key == 'operation_name':
+            print key
+        elif key == 'operation_id':
+            print key
+        elif key == 'trace_message':
+            print key
+            print flat_trace[key]
+            s = flat_trace[key]
+            a = s.split("(")
+            for b in a:
+                if b.endswith(")"): b = b[:-1]
+                print b
+                if b == "Function completed":
+                    flat_trace['trace_functionReturn'] = b
+                elif b == "Function started":
+                    flat_trace['trace_functionReturn'] = b
+                elif b.startswith("Id="):
+                    flat_trace['trace_functionId'] = b
+                elif b.endswith("ms)"):
+                    flat_trace['trace_functionDuration'] = b
+                else:
+                    flat_trace['trace_functionReturn'] = flat_trace[key]
+        elif key == 'customDimensions_LogLevel':
+            print key
+        elif key == 'operation_parentid':
+            print key
+        elif key == 'cloud_roleInstance':
+            print key
+        elif key == 'cloud_roleName':
+            print key
+        else:
+            # print 'removing key because it isn't in the list of targets'
+            # print key
+            flat_trace.pop(key, None)
+
+# important parts of the Azure Application Insights schema:
+# operation_name = The name of the object as shown in the Azure portal.
+# operation_id = the unique identifier for a single operation, such as a
+#                function execution session, very useful for corrolating the
+#                numerous Application Insight lines of data and tracking the
+#                execution of a single function execution
+# trace_message = this is a string that contains "Function started" or
+#                 "Function completed", along with important information that
+#                 must be parsed to extract and place into AppDynamics
+# trace_severityLevel = Numerical version of one of these: Verbose,
+#                       Information, Warning, Error, Critical
+# customDimensions_LogLevel = Appears to be the string version of the above
+# operation_parentid = the unique identifier for the operation that spawned
+#                      this operation, which would be helpful in connecting
+#                      the calls between Functions
+# cloud_roleInstance = The unique identifier for the "Function apps" instance
+#                      within Azure.
+# cloud_roleName = The name in the Azure Portal for the "Function apps"
+#                  instance. This is essentially a group that can hold multiple
+#                  function apps.
+#
+# Less important parts of the Azure Application Insights schema:
+# id = the unique identifier on a per entry basis for Application Insights
+#      itself, which isn't very helpful, so this script WON'T import this
+#      id into AppDynamics
+
+
+
 # ---------------------------------------------------------------------------
-# PART 3: INSERT THE JSON PAYLOAD INTO APPDYNAMICS
+# PART 3: FIND EXISTING UNIQUE VALUES THAT ALREADY EXIST IN APPDYNAMICS
 #
 
-print "Accessing AppDynamics..."
-url = 'https://analytics.api.appdynamics.com/events/publish/azureFunctions'
-headers = {'X-Events-API-AccountName': appDCustomerName, 'X-Events-API-Key': appDAPIKey, 'Content-type': 'application/vnd.appd.events+json;v=2'}
-print "Adding data..."
+
+
+
+# ---------------------------------------------------------------------------
+# PART : INSERT THE JSON PAYLOAD INTO APPDYNAMICS
+#
+
+# print "Accessing AppDynamics..."
+# url = 'https://analytics.api.appdynamics.com/events/publish/azureFunctions'
+# headers = {'X-Events-API-AccountName': appDCustomerName, 'X-Events-API-Key': appDAPIKey, 'Content-type': 'application/vnd.appd.events+json;v=2'}
+# print "Adding data..."
 data = json.dumps(outtraces)
-appdtraces = requests.post(url, headers=headers, data=data)
-print "Return code:"
-print appdtraces.status_code
-print appdtraces.content
-print
+# appdtraces = requests.post(url, headers=headers, data=data)
+print data
+#
+# print "Return code:"
+# print appdtraces.status_code
+# print appdtraces.content
+# print
