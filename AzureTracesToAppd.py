@@ -14,10 +14,10 @@ import datetime
 # KEYS FOR ACCESSING BOTH AZURE AND APPDYNAMICS
 #
 
-azureApplicationID = "06e7e052-76e6-467a-9e1d-44bdfcdb71ad"
-azureAPIKey = "2ld7ms8jngjh76qpim0n7uiri0dxfl6feeghqcsq"
-appDCustomerName = "ecovapov_ce1cd01a-111a-4532-a775-a4ff9a247975"
-appDAPIKey = "98dd218f-a1f5-4feb-bcc2-e61dbaddbcc2"
+azureApplicationID = ""
+azureAPIKey = ""
+appDCustomerName = ""
+appDAPIKey = ""
 
 # ---------------------------------------------------------------------------
 # FUNCTIONS:
